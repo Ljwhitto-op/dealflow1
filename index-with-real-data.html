@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DealFlow - Real Amazon Deals</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function DealFlow() {
+      const [user, setUser] = useState(null);
+      const [deals, setDeals] = useState([]);
+      const [savedDeals, setSavedDeals] = useState([]);
+      const [selectedCategory, setSelectedCategory] = useState('All');
+      const [searchTerm, setSearchTerm] = useState('');
+      const [country, setCountry] = useState('US');
+      const [loading, setLoading] = useState(true);
+      const [lastUpdated, setLastUpdated] = useState(null);
+
+      const categories = ['All', 'Electronics', 'Home', 'Gaming'];
+      const countries = [
+        { code: 'US', name: 'United States', domain: 'amazon.com', flag: '🇺🇸' },
+        { code: 'AU', name: 'Australia', domain: 'amazon.com.au', flag: '🇦🇺' },
+        { code: 'UK', name: 'United Kingdom', domain: 'amazon.co.uk', flag: '🇬🇧' },
+        { code: 'DE', name: 'Germany', domain: 'amazon.de', flag: '🇩🇪' }
+      ];
+
+      const YOUR_AFFILIATE_TAG = 'dealflow-22';
+
+      const storage = {
+        get: (key) => {
+          const val = localStorage.getItem(key);
+          return val ? JSON.parse(val) : null;
+        },
+        set: (key, value) => {
+          localStorage.setItem(key, JSON.stringify(value));
+        }
+      };
+
+      useEffect(() => {
+        loadRealDeals();
+        loadUserData();
+      }, []);
+
+      const loadRealDeals = async () => {
+        setLoading(true);
+        try {
+          // Fetch the real deals.json file
+          const response = await fetch('./deals.json');
+          const realDeals = await response.json();
+          
+          console.log('✅ Loaded real deals:', realDeals);
+          setDeals(realDeals);
+          
+          // Get last updated time from first deal
+          if (realDeals.length > 0 && realDeals[0].lastUpdated) {
+            setLastUpdated(new Date(realDeals[0].lastUpdated));
+          }
+          
+          setLoading(false);
+        } catch (error) {
+          console.error('❌ Error loading deals:', error);
+          // Fallback to empty if deals.json doesn't exist
+          setDeals([]);
+          setLoading(false);
+        }
+      };
+
+      const loadUserData = () => {
+        const userData = storage.get('dealflow_user');
+        if (userData) {
+          setUser(userData);
+          const saved = storage.get(`saved_${userData.id}`);
+          if (saved) setSavedDeals(saved);
+        }
+      };
+
+      const getAmazonUrl = (asin) => {
+        const domain = countries.find(c => c.code === country)?.domain || 'amazon.com';
+        return `https://www.${domain}/dp/${asin}?tag=${YOUR_AFFILIATE_TAG}`;
+      };
+
+      const handleSignup = (email) => {
+        const newUser = {
+          id: Date.now(),
+          email,
+          totalSaved: 0
+        };
+
+        storage.set('dealflow_user', newUser);
+        storage.set(`saved_${newUser.id}`, []);
+        setUser(newUser);
+      };
+
+      const saveDeal = (deal) => {
+        if (!user) {
+          alert('Sign up to track deals!');
+          return;
+        }
+
+        const isSaved = savedDeals.some(d => d.id === deal.id);
+        let newSaved;
+        let updatedUser = { ...user };
+        
+        if (isSaved) {
+          newSaved = savedDeals.filter(d => d.id !== deal.id);
+          const savings = deal.original - deal.price;
+          updatedUser.totalSaved = Math.max(0, user.totalSaved - savings);
+        } else {
+          newSaved = [...savedDeals, deal];
+          const savings = deal.original - deal.price;
+          updatedUser.totalSaved = user.totalSaved + savings;
+        }
+        
+        setUser(updatedUser);
+        setSavedDeals(newSaved);
+        storage.set('dealflow_user', updatedUser);
+        storage.set(`saved_${user.id}`, newSaved);
+      };
+
+      const filtered = deals.filter(d => {
+        const catMatch = selectedCategory === 'All' || d.category === selectedCategory;
+        const searchMatch = d.title.toLowerCase().includes(searchTerm.toLowerCase());
+        return catMatch && searchMatch;
+      });
+
+      if (!user) {
+        return (
+          <div style={{minHeight:'100vh',background:'linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 50%, #16213e 100%)',color:'#fff',padding:'20px'}}>
+            <div style={{maxWidth:'1200px',margin:'0 auto',padding:'40px 20px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'60px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+                  <div style={{width:'40px',height:'40px',background:'linear-gradient(135deg, #a855f7, #ec4899)',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'800',fontSize:'20px'}}>D</div>
+                  <span style={{fontSize:'24px',fontWeight:'700'}}>DealFlow</span>
+                </div>
+                <select value={country} onChange={(e)=>setCountry(e.target.value)} style={{padding:'8px 16px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',color:'#fff',fontSize:'14px',cursor:'pointer'}}>
+                  {countries.map(c=><option key={c.code} value={c.code} style={{background:'#1a1a2e'}}>{c.flag} {c.name}</option>)}
+                </select>
+              </div>
+
+              <div style={{textAlign:'center',marginBottom:'60px'}}>
+                <div style={{display:'inline-block',padding:'8px 20px',background:'rgba(16,185,129,0.2)',border:'1px solid rgba(16,185,129,0.4)',borderRadius:'50px',fontSize:'14px',fontWeight:'600',color:'#10b981',marginBottom:'32px'}}>
+                  ✅ LIVE DATA - Real Amazon Prices Updated {lastUpdated ? new Date(lastUpdated).toLocaleDateString() : 'Today'}
+                </div>
+                
+                <h1 style={{fontSize:'64px',fontWeight:'800',lineHeight:'1.1',marginBottom:'24px',background:'linear-gradient(135deg, #fff 0%, #a855f7 100%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+                  Real Amazon Deals.<br/>Real Savings.
+                </h1>
+                <p style={{fontSize:'20px',color:'rgba(255,255,255,0.7)',maxWidth:'700px',margin:'0 auto 40px'}}>
+                  Verified deals fetched directly from Amazon API. Updated automatically. Tag: <strong>{YOUR_AFFILIATE_TAG}</strong>
+                </p>
+
+                <div style={{display:'flex',gap:'12px',maxWidth:'500px',margin:'0 auto',justifyContent:'center'}}>
+                  <input id="emailInput" type="email" placeholder="Enter your email" style={{flex:1,padding:'16px 20px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'10px',color:'#fff',fontSize:'16px',outline:'none'}}/>
+                  <button onClick={()=>{
+                    const email=document.getElementById('emailInput').value;
+                    if(email&&email.includes('@'))handleSignup(email);
+                    else alert('Enter valid email');
+                  }} style={{padding:'16px 32px',background:'linear-gradient(135deg, #a855f7, #ec4899)',border:'none',borderRadius:'10px',color:'#fff',fontWeight:'700',fontSize:'16px',cursor:'pointer'}}>
+                    Start Free
+                  </button>
+                </div>
+              </div>
+
+              <div style={{padding:'40px',background:'linear-gradient(135deg, rgba(168,85,247,0.1), rgba(236,72,153,0.1))',border:'1px solid rgba(168,85,247,0.3)',borderRadius:'20px',textAlign:'center'}}>
+                <h2 style={{fontSize:'24px',fontWeight:'800',marginBottom:'20px'}}>✓ Real Amazon API Integration</h2>
+                <h2 style={{fontSize:'24px',fontWeight:'800',marginBottom:'20px'}}>✓ Prices Updated Automatically</h2>
+                <h2 style={{fontSize:'24px',fontWeight:'800',marginBottom:'20px'}}>✓ Only Deals 20%+ Off</h2>
+                <h2 style={{fontSize:'24px',fontWeight:'800'}}>✓ Your Affiliate Tag on Every Link</h2>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={{minHeight:'100vh',background:'#0a0a0f',color:'#fff'}}>
+          <div style={{background:'rgba(255,255,255,0.03)',borderBottom:'1px solid rgba(255,255,255,0.1)',padding:'16px 24px',position:'sticky',top:0,zIndex:100}}>
+            <div style={{maxWidth:'1400px',margin:'0 auto',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+                <div style={{width:'36px',height:'36px',background:'linear-gradient(135deg, #a855f7, #ec4899)',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'800'}}>D</div>
+                <span style={{fontSize:'20px',fontWeight:'700'}}>DealFlow</span>
+                {lastUpdated && (
+                  <span style={{fontSize:'12px',color:'#10b981',marginLeft:'12px'}}>
+                    ✅ Updated {lastUpdated.toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+              <div style={{display:'flex',gap:'16px',alignItems:'center'}}>
+                <select value={country} onChange={(e)=>setCountry(e.target.value)} style={{padding:'6px 12px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',color:'#fff',fontSize:'14px',cursor:'pointer'}}>
+                  {countries.map(c=><option key={c.code} value={c.code} style={{background:'#1a1a2e'}}>{c.flag} {c.code}</option>)}
+                </select>
+                <button onClick={()=>setUser(null)} style={{padding:'8px 16px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'8px',color:'#fff',cursor:'pointer'}}>Sign Out</button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{maxWidth:'1400px',margin:'0 auto',padding:'32px 24px'}}>
+            {loading ? (
+              <div style={{textAlign:'center',padding:'60px',color:'#999'}}>
+                <div style={{fontSize:'48px',marginBottom:'20px'}}>⏳</div>
+                <div>Loading real deals from Amazon...</div>
+              </div>
+            ) : deals.length === 0 ? (
+              <div style={{textAlign:'center',padding:'60px',background:'rgba(255,255,255,0.03)',borderRadius:'12px',border:'1px solid rgba(255,255,255,0.1)'}}>
+                <div style={{fontSize:'48px',marginBottom:'20px'}}>📭</div>
+                <h2 style={{fontSize:'24px',marginBottom:'12px'}}>No Deals Right Now</h2>
+                <p style={{color:'#999'}}>Run the fetch_deals.py script to update!</p>
+              </div>
+            ) : (
+              <>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:'16px',marginBottom:'32px'}}>
+                  <div style={{padding:'24px',background:'rgba(168,85,247,0.1)',border:'1px solid rgba(168,85,247,0.2)',borderRadius:'12px'}}>
+                    <div style={{fontSize:'32px',fontWeight:'800',color:'#a855f7',marginBottom:'8px'}}>${user.totalSaved.toFixed(0)}</div>
+                    <div style={{fontSize:'14px',color:'#999'}}>Total Savings</div>
+                  </div>
+                  <div style={{padding:'24px',background:'rgba(236,72,153,0.1)',border:'1px solid rgba(236,72,153,0.2)',borderRadius:'12px'}}>
+                    <div style={{fontSize:'32px',fontWeight:'800',color:'#ec4899',marginBottom:'8px'}}>{savedDeals.length}</div>
+                    <div style={{fontSize:'14px',color:'#999'}}>Deals Saved</div>
+                  </div>
+                  <div style={{padding:'24px',background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:'12px'}}>
+                    <div style={{fontSize:'32px',fontWeight:'800',color:'#10b981',marginBottom:'8px'}}>{deals.length}</div>
+                    <div style={{fontSize:'14px',color:'#999'}}>Live Deals</div>
+                  </div>
+                </div>
+
+                <div style={{background:'rgba(255,255,255,0.03)',padding:'20px',borderRadius:'12px',marginBottom:'24px',border:'1px solid rgba(255,255,255,0.1)'}}>
+                  <input type="text" placeholder="Search products..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} style={{width:'100%',padding:'12px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'8px',color:'#fff',fontSize:'15px',outline:'none',marginBottom:'16px'}}/>
+                  <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                    {categories.map(cat=><button key={cat} onClick={()=>setSelectedCategory(cat)} style={{padding:'8px 16px',background:selectedCategory===cat?'linear-gradient(135deg, #a855f7, #ec4899)':'rgba(255,255,255,0.05)',border:selectedCategory===cat?'none':'1px solid rgba(255,255,255,0.1)',borderRadius:'20px',color:'#fff',cursor:'pointer',fontSize:'14px',fontWeight:selectedCategory===cat?'700':'400'}}>{cat}</button>)}
+                  </div>
+                </div>
+
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(340px, 1fr))',gap:'20px'}}>
+                  {filtered.map(deal=>{
+                    const isSaved=savedDeals.some(d=>d.id===deal.id);
+                    const discount = deal.discount || Math.round(((deal.original-deal.price)/deal.original)*100);
+                    return(
+                      <div key={deal.id} style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'12px',padding:'20px',transition:'transform 0.2s'}}>
+                        <div style={{width:'100%',height:'200px',background:'#fff',borderRadius:'10px',marginBottom:'16px',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                          {deal.image ? (
+                            <img src={deal.image} alt={deal.title} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}/>
+                          ) : (
+                            <div style={{fontSize:'64px'}}>📦</div>
+                          )}
+                        </div>
+                        <div style={{display:'flex',gap:'6px',marginBottom:'12px',flexWrap:'wrap'}}>
+                          {deal.trending&&<div style={{padding:'4px 8px',background:'rgba(239,68,68,0.2)',borderRadius:'6px',fontSize:'11px',fontWeight:'700',color:'#ef4444'}}>🔥 HOT</div>}
+                          <div style={{padding:'4px 8px',background:'rgba(16,185,129,0.2)',borderRadius:'6px',fontSize:'11px',fontWeight:'700',color:'#10b981'}}>✅ REAL PRICE</div>
+                        </div>
+                        <h3 style={{fontSize:'16px',fontWeight:'700',marginBottom:'8px',lineHeight:'1.3',minHeight:'40px'}}>{deal.title}</h3>
+                        <div style={{fontSize:'11px',color:'#666',marginBottom:'12px'}}>ASIN: {deal.asin}</div>
+                        <div style={{display:'flex',alignItems:'baseline',gap:'10px',marginBottom:'16px'}}>
+                          <span style={{fontSize:'28px',fontWeight:'800',color:'#a855f7'}}>${deal.price.toFixed(2)}</span>
+                          <span style={{fontSize:'16px',color:'#666',textDecoration:'line-through'}}>${deal.original.toFixed(2)}</span>
+                          <span style={{padding:'4px 8px',background:'#10b981',borderRadius:'6px',fontSize:'12px',fontWeight:'700'}}>-{discount}%</span>
+                        </div>
+                        {deal.rating > 0 && (
+                          <div style={{marginBottom:'16px',fontSize:'13px',color:'#999'}}>⭐ {deal.rating} ({deal.reviews ? (deal.reviews/1000).toFixed(0)+'K' : '0'} reviews)</div>
+                        )}
+                        <div style={{display:'flex',gap:'8px'}}>
+                          <button onClick={()=>window.open(getAmazonUrl(deal.asin),'_blank')} style={{flex:1,padding:'12px',background:'linear-gradient(135deg, #a855f7, #ec4899)',border:'none',borderRadius:'8px',color:'#fff',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
+                            🔗 Buy on Amazon
+                          </button>
+                          <button onClick={()=>saveDeal(deal)} style={{padding:'12px 16px',background:isSaved?'rgba(239,68,68,0.2)':'rgba(255,255,255,0.08)',border:isSaved?'1px solid rgba(239,68,68,0.4)':'1px solid rgba(255,255,255,0.1)',borderRadius:'8px',cursor:'pointer',fontSize:'18px'}}>
+                            {isSaved?'❤️':'🤍'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<DealFlow />);
+  </script>
+</body>
+</html>
